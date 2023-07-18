@@ -27,6 +27,8 @@ min_child_percentage = None
 max_child_percentage = 0
 min_parent_percentage = None
 max_parent_percentage = 0
+candidate_count = 0  # Number of transactions that would be considered for fee estimation.
+candidate_parent_count = 0  # Number of them that have a child in the same block.
 
 # For each block within the given range, go through the list of transactions and record
 # which one have child or parent in the same block.
@@ -43,15 +45,18 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
 
     child_count = 0
     parent_txids = set()  # To not double count parents.
+    candidates_txids = set()  # Txs that would be considered for fee estimation.
     for txid in txids:
         inputs = rpc.getrawtransaction(txid, True)["vin"]
         is_child = False  # To not double count descendants.
+        is_parent = False
         # Let's see if any of the input is a transaction mined in this block.
         for txin in inputs:
             if "txid" not in txin:
                 continue  # Coinbase tx.
             # If it's in the list of txids for this block, it's a child of a CPFP.
             if txin["txid"] in txids:
+                is_parent = True
                 # Record the parent if it's new.
                 if txin["txid"] not in parent_txids:
                     parent_txids.add(txin["txid"])
@@ -59,12 +64,16 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
                 if not is_child:
                     is_child = True
                     child_count += 1
+        if not is_child:
+            candidates_txids.add(txid)
 
     # Update the totals.
     total_transactions += txs_count
     total_child_count += child_count
     parent_count = len(parent_txids)
     total_parent_count += parent_count
+    candidate_count += len(candidates_txids)
+    candidate_parent_count += len(parent_txids.intersection(candidates_txids))
 
     # Update the bounds.
     child_percentage = child_count / txs_count * 100
@@ -81,8 +90,10 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
 print(f"Between block heights {START_BLOCK_HEIGHT} and {STOP_BLOCK_HEIGHT}:")
 print(f"    - The average percentage of transactions with a descendant in the same block is {total_parent_count / total_transactions * 100}%")
 print(f"    - The average percentage of transactions with an ancestor in the same block is {total_child_count / total_transactions * 100}%")
-print(f"    - The highest percentage of transactions with a descendant in the same block is {max_parent_percentage}")
-print(f"    - The highest percentage of transactions with an ancestor in the same block is {max_child_percentage}")
+print(f"    - The highest percentage of transactions with a descendant in the same block is {max_parent_percentage}%")
+print(f"    - The highest percentage of transactions with an ancestor in the same block is {max_child_percentage}%")
 assert all(perc is not None for perc in (min_parent_percentage, min_child_percentage))
-print(f"    - The lowest percentage of transactions with a descendant in the same block is {min_parent_percentage}")
-print(f"    - The lowest percentage of transactions with an ancestor in the same block is {min_child_percentage}")
+print(f"    - The lowest percentage of transactions with a descendant in the same block is {min_parent_percentage}%")
+print(f"    - The lowest percentage of transactions with an ancestor in the same block is {min_child_percentage}%")
+print(f"    - The average percentage of transactions in a block that would be considered for fee estimation is {candidate_count / total_transactions * 100}%")
+print(f"    - The average percentage of transactions with a descendant in the same block among candidates is {candidate_parent_count / candidate_count * 100}%")
