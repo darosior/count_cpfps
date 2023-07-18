@@ -2,6 +2,10 @@
 A quick script to measure the use of CPFP in past blocks. This script requires a local bitcoind
 with -txindex. It's inefficient but may be useful to get an idea of the CPFP usage in a given
 historical period.
+
+Note this script tracks ancestor and descendants but does not try to compute whether a (set of)
+child incentivized the inclusion of a (set of) parent(s) in the block. It's simply to get an idea
+of how much transaction chains are used in practice.
 """
 
 import os
