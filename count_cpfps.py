@@ -1,6 +1,6 @@
 """
 A quick script to measure the use of CPFP in past blocks. This script requires a local bitcoind
-with -txindex. It's inefficient but may be useful to get an idea of the CPFP usage in a given
+in the default datadir. It's inefficient but may be useful to get an idea of the CPFP usage in a given
 historical period.
 
 Note this script tracks ancestor and descendants but does not try to compute whether a (set of)
@@ -13,7 +13,7 @@ import sys
 from authproxy import AuthServiceProxy
 
 # Block range to be inspected.
-START_BLOCK_HEIGHT = 799_251
+START_BLOCK_HEIGHT = 799_151
 STOP_BLOCK_HEIGHT = 799_251
 
 # Connect to a locally ran bitcoind in the default datadir.
@@ -40,8 +40,9 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
     perc_done = (height - START_BLOCK_HEIGHT + 1) / (STOP_BLOCK_HEIGHT - START_BLOCK_HEIGHT + 1) * 100
     print(f"At block {height} ({int(perc_done)}% done).", end='\r')
     block_hash = rpc.getblockhash(height)
-    txids = set(rpc.getblock(block_hash)["tx"])
-    txs_count = len(txids)
+    block_txs = rpc.getblock(block_hash, 2)["tx"]
+    block_txids = set(tx["txid"] for tx in block_txs)
+    txs_count = len(block_txids)
 
     # Ignore empty blocks.
     if txs_count == 1:
@@ -50,16 +51,15 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
     child_count = 0
     parent_txids = set()  # To not double count parents.
     candidates_txids = set()  # Txs that would be considered for fee estimation.
-    for txid in txids:
-        inputs = rpc.getrawtransaction(txid, True)["vin"]
+    for tx in block_txs:
         is_child = False  # To not double count descendants.
         is_parent = False
         # Let's see if any of the input is a transaction mined in this block.
-        for txin in inputs:
+        for txin in tx["vin"]:
             if "txid" not in txin:
                 continue  # Coinbase tx.
             # If it's in the list of txids for this block, it's a child of a CPFP.
-            if txin["txid"] in txids:
+            if txin["txid"] in block_txids:
                 is_parent = True
                 # Record the parent if it's new.
                 if txin["txid"] not in parent_txids:
@@ -69,7 +69,7 @@ for height in range(START_BLOCK_HEIGHT, STOP_BLOCK_HEIGHT + 1):
                     is_child = True
                     child_count += 1
         if not is_child:
-            candidates_txids.add(txid)
+            candidates_txids.add(tx["txid"])
 
     # Update the totals.
     total_transactions += txs_count
